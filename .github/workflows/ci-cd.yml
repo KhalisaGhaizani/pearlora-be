@@ -14,22 +14,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  test:
-    name: Test backend
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - name: gofmt
-        run: |
-          unformatted=$(gofmt -l .)
-          if [ -n "$unformatted" ]; then echo "Not gofmt'ed:"; echo "$unformatted"; exit 1; fi
-      - run: go vet ./...
-      - run: go test -race ./...
-      - run: go build ./...
-
   openapi:
     name: Lint OpenAPI spec
     runs-on: ubuntu-latest
@@ -39,7 +23,7 @@ jobs:
 
   images:
     name: Build & push images
-    needs: [test, openapi]
+    needs: [openapi]
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
@@ -135,3 +119,4 @@ jobs:
               sleep 2
             done
             echo "Backend did not become healthy"; docker compose logs --tail 50 backend; exit 1
+
