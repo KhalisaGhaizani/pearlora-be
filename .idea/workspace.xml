@@ -5,7 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d7d20d1b-eeae-406c-a060-5716f3fc9878" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.github/workflows/ci-cd.yml" beforeDir="false" afterPath="$PROJECT_DIR$/.github/workflows/ci-cd.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -14,6 +14,65 @@
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="NextEditCompletionFeaturesState">
+    <decayedCancelled>
+      <entry key="MS100" value="1.9868596873814468E-21" />
+      <entry key="MS500" value="7.238248174720734E-5" />
+      <entry key="S2" value="0.09373126778706331" />
+      <entry key="S5" value="0.45952439020328595" />
+      <entry key="S10" value="0.8930166137551182" />
+      <entry key="S30" value="1.5013636935499513" />
+      <entry key="S60" value="1.8555912744643293" />
+      <entry key="M2" value="4.974104199820327" />
+      <entry key="M5" value="23.271102343271664" />
+      <entry key="M10" value="42.49131431629885" />
+      <entry key="M15" value="52.16861909711177" />
+      <entry key="M30" value="64.15431798615514" />
+      <entry key="H1" value="71.18037116733973" />
+      <entry key="H2" value="74.98560443626671" />
+      <entry key="H4" value="76.96595191697607" />
+      <entry key="D1" value="78.65720138830665" />
+      <entry key="W1" value="78.95093512762695" />
+    </decayedCancelled>
+    <decayedSelected>
+      <entry key="MS100" value="1.0" />
+      <entry key="MS500" value="1.0" />
+      <entry key="S2" value="1.0" />
+      <entry key="S5" value="1.0" />
+      <entry key="S10" value="1.0" />
+      <entry key="S30" value="1.0" />
+      <entry key="S60" value="1.0" />
+      <entry key="M2" value="1.0" />
+      <entry key="M5" value="1.0" />
+      <entry key="M10" value="1.0" />
+      <entry key="M15" value="1.0" />
+      <entry key="M30" value="1.0" />
+      <entry key="H1" value="1.0" />
+      <entry key="H2" value="1.0" />
+      <entry key="H4" value="1.0" />
+      <entry key="D1" value="1.0" />
+      <entry key="W1" value="1.0" />
+    </decayedSelected>
+    <decayedShown>
+      <entry key="MS100" value="7.972682590807758E-13" />
+      <entry key="MS500" value="0.00381047816876684" />
+      <entry key="S2" value="0.29886866901917414" />
+      <entry key="S5" value="0.946173248846244" />
+      <entry key="S10" value="1.5760115361453" />
+      <entry key="S30" value="2.377376095735601" />
+      <entry key="S60" value="2.7908473255227215" />
+      <entry key="M2" value="5.940413553550582" />
+      <entry key="M5" value="24.255978822607492" />
+      <entry key="M10" value="43.482950825182996" />
+      <entry key="M15" value="53.16277800112585" />
+      <entry key="M30" value="65.15123397647899" />
+      <entry key="H1" value="72.17878142328861" />
+      <entry key="H2" value="75.98479665806948" />
+      <entry key="H4" value="77.96554467217946" />
+      <entry key="D1" value="79.65713303676388" />
+      <entry key="W1" value="79.95092535127858" />
+    </decayedShown>
   </component>
   <component name="ProjectColorInfo"><![CDATA[{
   "associatedIndex": 0,

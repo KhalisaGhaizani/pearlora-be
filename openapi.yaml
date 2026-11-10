@@ -27,17 +27,8 @@ info:
 
     **No authentication.** Anyone who can reach the server can control the motor.
 servers:
-  - url: "{scheme}://{host}:{port}"
+  - url: "https://api.pearlora.nighttealabs.tech"
     description: Pearlora backend
-    variables:
-      scheme:
-        enum: [http, https]
-        default: http
-      host:
-        default: localhost
-        description: Server hostname or IP (e.g. your VPS)
-      port:
-        default: "8080"
 security: []  # no authentication (see description)
 tags:
   - name: status
