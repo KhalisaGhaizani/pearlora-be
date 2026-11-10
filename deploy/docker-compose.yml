@@ -1,0 +1,19 @@
+# Runs on the VPS. CI copies this file to ~/pearlora and writes .env with
+# BACKEND_IMAGE, DOCS_IMAGE and TAG.
+services:
+  backend:
+    image: ${BACKEND_IMAGE}:${TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "8080:8080"   # API, /ws for clients, /ws/device for the ESP32
+    volumes:
+      - pearlora-data:/data
+
+  docs:
+    image: ${DOCS_IMAGE}:${TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "8081:8080"   # Swagger UI
+
+volumes:
+  pearlora-data:

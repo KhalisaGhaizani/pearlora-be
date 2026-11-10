@@ -1,0 +1,7 @@
+# local runtime state
+settings.json
+.settings-*.json
+# binaries
+/server
+/pearctl
+/simdevice

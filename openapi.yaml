@@ -1,0 +1,446 @@
+openapi: 3.0.3
+info:
+  title: Pearlora Control API
+  version: 1.0.0
+  description: |
+    Control backend for the Pearlora winch prototype. It moves an oyster batten
+    up and down in **manual** or **automatic** mode.
+
+    - **Manual:** up / down / stop, either *hold* (repeat the request every
+      ~200 ms while the button is held) or *latch* (runs until stop, a limit
+      switch, or `manual.latch_max_run_s`).
+    - **Automatic:** the batten holds a target depth. Enabled sensor rules are
+      checked in the user-set `priority` order, and the first rule out of range
+      wins. An `up`/`down` request moves the target by `depth.step_m` every
+      `depth.step_interval_s`; a `stop` request stops the motor.
+
+    "Up" means shallower and "down" means deeper.
+
+    ## WebSockets
+    OpenAPI can't fully describe WebSocket traffic, so the two endpoints are
+    listed for reference and their messages are defined under `components.schemas`:
+
+    | Path | Client | Messages |
+    |---|---|---|
+    | `/ws` | frontend / pearctl | server → client: `StatusMessage` on every change and every telemetry reading |
+    | `/ws/device` | ESP32 | device → server: `DeviceTelemetryMessage` every 500 ms; server → device: `DeviceMotorCommand`, `DeviceZeroDepthCommand` |
+
+    **No authentication.** Anyone who can reach the server can control the motor.
+servers:
+  - url: "{scheme}://{host}:{port}"
+    description: Pearlora backend
+    variables:
+      scheme:
+        enum: [http, https]
+        default: http
+      host:
+        default: localhost
+        description: Server hostname or IP (e.g. your VPS)
+      port:
+        default: "8080"
+security: []  # no authentication (see description)
+tags:
+  - name: status
+    description: Health and live state
+  - name: control
+    description: Mode switching and motor control
+  - name: settings
+    description: User-configurable control settings (persisted)
+  - name: device
+    description: Commands forwarded to the ESP32
+  - name: websocket
+    description: WebSocket endpoints (reference only)
+
+paths:
+  /healthz:
+    get:
+      tags: [status]
+      summary: Liveness check
+      operationId: health
+      responses:
+        "200":
+          description: Server is up
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, device_connected]
+                properties:
+                  status: { type: string, example: ok }
+                  device_connected: { type: boolean }
+
+  /api/status:
+    get:
+      tags: [status]
+      summary: Current mode, telemetry and motor state
+      operationId: getStatus
+      responses:
+        "200":
+          $ref: "#/components/responses/Status"
+
+  /api/mode:
+    post:
+      tags: [control]
+      summary: Switch between manual and automatic mode
+      description: The motor always stops on a switch. Entering auto resets the target to `depth.base_target_m`.
+      operationId: setMode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mode]
+              additionalProperties: false
+              properties:
+                mode: { $ref: "#/components/schemas/Mode" }
+            example: { mode: auto }
+      responses:
+        "200": { $ref: "#/components/responses/Status" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409":
+          description: Emergency stop is engaged on the device (auto refused)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/manual:
+    post:
+      tags: [control]
+      summary: Manual up / down / stop
+      description: |
+        Only accepted in manual mode.
+        - `hold: true`: repeat every ~200 ms while the button is held. The motor
+          stops `manual.hold_timeout_ms` after the last request.
+        - `hold: false` (latch): runs until `stop`, a limit switch, or
+          `manual.latch_max_run_s`.
+
+        `stop` is always accepted in manual mode.
+      operationId: manual
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              additionalProperties: false
+              properties:
+                action: { $ref: "#/components/schemas/Dir" }
+                hold:
+                  type: boolean
+                  default: false
+            examples:
+              holdUp: { value: { action: up, hold: true } }
+              latchDown: { value: { action: down } }
+              stop: { value: { action: stop } }
+      responses:
+        "200": { $ref: "#/components/responses/Status" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409":
+          description: Not in manual mode, limit switch pressed in that direction, or emergency stop engaged
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503": { $ref: "#/components/responses/DeviceUnavailable" }
+
+  /api/settings:
+    get:
+      tags: [settings]
+      summary: Current settings
+      operationId: getSettings
+      responses:
+        "200": { $ref: "#/components/responses/Settings" }
+    put:
+      tags: [settings]
+      summary: Update settings (partial)
+      description: |
+        Fields you leave out keep their current values. `priority` is replaced
+        as a whole. The result is validated, saved to `settings.json` and applied
+        immediately.
+      operationId: updateSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SettingsUpdate" }
+            examples:
+              slower: { value: { motor_duty_pct: 25 } }
+              tiltGoesDeeper: { value: { tilt: { action: down } } }
+              noSoil: { value: { sensors_enabled: { soil: false } } }
+              reorder: { value: { priority: [soil, tilt, temperature] } }
+      responses:
+        "200": { $ref: "#/components/responses/Settings" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/settings/reset:
+    post:
+      tags: [settings]
+      summary: Restore the default (dummy) settings
+      operationId: resetSettings
+      responses:
+        "200": { $ref: "#/components/responses/Settings" }
+
+  /api/auto/target/reset:
+    post:
+      tags: [control]
+      summary: Move the auto target depth back to the base target
+      operationId: resetTarget
+      responses:
+        "200": { $ref: "#/components/responses/Status" }
+
+  /api/device/zero-depth:
+    post:
+      tags: [device]
+      summary: Re-zero depth on the device
+      description: The device uses its current pressure reading as the surface (depth 0).
+      operationId: zeroDepth
+      responses:
+        "202":
+          description: Command sent to the device
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result: { type: string, example: zero_depth sent }
+        "503": { $ref: "#/components/responses/DeviceUnavailable" }
+
+  /ws:
+    get:
+      tags: [websocket]
+      summary: Live status stream (WebSocket)
+      description: |
+        Upgrade to a WebSocket. The server sends a `StatusMessage` straight away,
+        then on every change and every telemetry reading. Anything the client
+        sends is ignored.
+      operationId: statusStream
+      responses:
+        "101":
+          description: Switching protocols; see `StatusMessage`
+
+  /ws/device:
+    get:
+      tags: [websocket]
+      summary: ESP32 device connection (WebSocket)
+      description: |
+        Used by the firmware. Only one device is supported; a new connection
+        replaces the old one. The device sends `DeviceTelemetryMessage` every
+        500 ms. The server sends `DeviceMotorCommand` (re-sent every 500 ms while
+        the motor runs; the device stops when `ttl_ms` expires) and
+        `DeviceZeroDepthCommand`.
+      operationId: deviceStream
+      responses:
+        "101":
+          description: Switching protocols
+
+components:
+  responses:
+    Status:
+      description: Current status
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Status" }
+    Settings:
+      description: Current settings
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Settings" }
+    BadRequest:
+      description: Invalid JSON or invalid values
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: "priority must list each of [tilt temperature soil] exactly once" }
+    DeviceUnavailable:
+      description: Device not connected, or no recent telemetry
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: device not connected }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+    Mode:
+      type: string
+      enum: [manual, auto]
+
+    Dir:
+      type: string
+      description: Motor direction. `up` = shallower, `down` = deeper.
+      enum: [up, down, stop]
+
+    Action:
+      type: string
+      description: What a rule asks for when it triggers.
+      enum: [none, up, down, stop]
+
+    RuleName:
+      type: string
+      enum: [tilt, temperature, soil]
+
+    SensorOK:
+      type: object
+      description: Whether each sensor returned a valid reading.
+      required: [temp, depth, imu, soil]
+      properties:
+        temp: { type: boolean, description: DS18B20 }
+        depth: { type: boolean, description: MS5837 }
+        imu: { type: boolean, description: MPU6050 }
+        soil: { type: boolean, description: Soil-moisture sensor }
+
+    Telemetry:
+      type: object
+      required: [temp_c, pressure_mbar, depth_m, soil_raw, tilt_deg, limit_top, limit_bottom, motor, ok, estop]
+      properties:
+        temp_c: { type: number, example: 27.4 }
+        pressure_mbar: { type: number, example: 1052.3 }
+        depth_m: { type: number, description: Metres below the zeroed surface, example: 0.39 }
+        soil_raw: { type: number, minimum: 0, maximum: 4095, description: "Raw ADC, lower = wetter", example: 2100 }
+        tilt_deg: { type: number, description: Angle from vertical, example: 3.2 }
+        limit_top: { type: boolean }
+        limit_bottom: { type: boolean }
+        motor: { $ref: "#/components/schemas/Dir" }
+        ok: { $ref: "#/components/schemas/SensorOK" }
+        estop: { type: boolean, description: Emergency stop engaged on the device }
+
+    Status:
+      type: object
+      required: [mode, device_connected, telemetry_age_ms, telemetry, motor, duty_pct, target_depth_m, reason, manual_hold]
+      properties:
+        mode: { $ref: "#/components/schemas/Mode" }
+        device_connected: { type: boolean }
+        telemetry_age_ms:
+          type: integer
+          nullable: true
+          description: Age of the latest telemetry; null before the first reading
+        telemetry:
+          type: object
+          allOf: [{ $ref: "#/components/schemas/Telemetry" }]
+          nullable: true
+        motor: { $ref: "#/components/schemas/Dir" }
+        duty_pct: { type: number, example: 40 }
+        target_depth_m: { type: number, example: 0.4 }
+        reason:
+          type: string
+          description: Human-readable reason for the current motor state
+          example: "temperature 31.2 °C > max 30.0 °C → target 0.45 m (depth 0.41 m)"
+        manual_hold: { type: boolean, description: A hold-to-move is in progress }
+
+    SensorsEnabled:
+      type: object
+      properties:
+        depth: { type: boolean, description: "Use the target-depth loop. If false, rules drive the motor directly." }
+        temperature: { type: boolean }
+        soil: { type: boolean }
+        tilt: { type: boolean }
+
+    DepthSettings:
+      type: object
+      description: "Must satisfy 0 <= min_m < max_m and min_m <= base_target_m <= max_m."
+      properties:
+        base_target_m: { type: number, example: 0.4 }
+        tolerance_m: { type: number, minimum: 0.000001, example: 0.03 }
+        min_m: { type: number, minimum: 0, example: 0.1 }
+        max_m: { type: number, example: 0.8 }
+        step_m: { type: number, minimum: 0.000001, example: 0.05 }
+        step_interval_s: { type: number, minimum: 0.000001, example: 10 }
+
+    RangeRule:
+      type: object
+      description: "Value > max → above_action; value < min → below_action. Must satisfy min < max."
+      properties:
+        min: { type: number }
+        max: { type: number }
+        above_action: { $ref: "#/components/schemas/Action" }
+        below_action: { $ref: "#/components/schemas/Action" }
+
+    TiltSettings:
+      type: object
+      properties:
+        max_deg: { type: number, minimum: 0.1, maximum: 89.9, example: 15 }
+        action: { $ref: "#/components/schemas/Action" }
+
+    ManualSettings:
+      type: object
+      properties:
+        hold_timeout_ms: { type: integer, minimum: 1, example: 600 }
+        latch_max_run_s: { type: number, minimum: 0.000001, example: 30 }
+
+    SettingsUpdate:
+      type: object
+      description: Any subset of `Settings`.
+      additionalProperties: false
+      properties:
+        motor_duty_pct:
+          type: number
+          minimum: 1
+          maximum: 100
+          description: Motor power for manual and auto moves
+        sensors_enabled: { $ref: "#/components/schemas/SensorsEnabled" }
+        priority:
+          type: array
+          description: Rule order; must list each rule exactly once. The first triggered rule wins.
+          minItems: 3
+          maxItems: 3
+          uniqueItems: true
+          items: { $ref: "#/components/schemas/RuleName" }
+        depth: { $ref: "#/components/schemas/DepthSettings" }
+        temperature: { $ref: "#/components/schemas/RangeRule" }
+        soil: { $ref: "#/components/schemas/RangeRule" }
+        tilt: { $ref: "#/components/schemas/TiltSettings" }
+        manual: { $ref: "#/components/schemas/ManualSettings" }
+
+    Settings:
+      allOf:
+        - $ref: "#/components/schemas/SettingsUpdate"
+        - type: object
+          required: [motor_duty_pct, sensors_enabled, priority, depth, temperature, soil, tilt, manual]
+      example:
+        motor_duty_pct: 40
+        sensors_enabled: { depth: true, temperature: true, soil: true, tilt: true }
+        priority: [tilt, temperature, soil]
+        depth: { base_target_m: 0.4, tolerance_m: 0.03, min_m: 0.1, max_m: 0.8, step_m: 0.05, step_interval_s: 10 }
+        temperature: { min: 24, max: 30, above_action: down, below_action: up }
+        soil: { min: 1200, max: 2800, above_action: down, below_action: up }
+        tilt: { max_deg: 15, action: stop }
+        manual: { hold_timeout_ms: 600, latch_max_run_s: 30 }
+
+    StatusMessage:
+      type: object
+      description: Sent on `/ws`.
+      required: [type, status]
+      properties:
+        type: { type: string, enum: [status] }
+        status: { $ref: "#/components/schemas/Status" }
+
+    DeviceTelemetryMessage:
+      description: Device → server on `/ws/device`, every 500 ms.
+      allOf:
+        - type: object
+          required: [type]
+          properties:
+            type: { type: string, enum: [telemetry] }
+        - $ref: "#/components/schemas/Telemetry"
+
+    DeviceMotorCommand:
+      type: object
+      description: Server → device on `/ws/device`.
+      required: [type, dir, duty, ttl_ms]
+      properties:
+        type: { type: string, enum: [motor] }
+        dir: { $ref: "#/components/schemas/Dir" }
+        duty: { type: integer, minimum: 0, maximum: 255, description: PWM duty }
+        ttl_ms: { type: integer, description: The device stops if no fresh command arrives within this time, example: 1500 }
+
+    DeviceZeroDepthCommand:
+      type: object
+      description: Server → device on `/ws/device`.
+      required: [type]
+      properties:
+        type: { type: string, enum: [zero_depth] }

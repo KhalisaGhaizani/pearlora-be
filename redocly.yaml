@@ -1,0 +1,9 @@
+extends:
+  - recommended
+rules:
+  info-license: off
+  operation-4xx-response: off
+  # WebSocket endpoints only return 101; their message schemas are documented
+  # in components but not referenced by any HTTP operation.
+  operation-2xx-response: off
+  no-unused-components: off
